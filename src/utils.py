@@ -30,13 +30,13 @@ def chunk_text(text: str, max_tokens: int, tokenizer=None) -> list:
     Args:
         text (str): Input text to chunk
         max_tokens (int): Maximum tokens per chunk
-        tokenizer (TokenCounter, optional): Tokenizer to use
+        tokenizer (Tokenizer, optional): Tokenizer to use
     
     Returns:
         list: Chunks of text
     """
     if not tokenizer:
-        tokenizer = TokenCounter()
+        tokenizer = Tokenizer()
     
     chunks = []
     current_chunk = []

@@ -1,13 +1,14 @@
 import asyncio
 import anthropic
+from anthropic import AsyncAnthropic
 from typing import Dict, Any, List
 from .config import Config
-from .utils import TokenCounter, chunk_text, gather_with_concurrency
+from .utils import Tokenizer, chunk_text, gather_with_concurrency
 
 class AIProcessor:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
-        self.tokenizer = TokenCounter()
+        self.client = AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
+        self.tokenizer = Tokenizer()
     
     async def process_chunk(self, chunk: str, user_prefix: str) -> str:
         """
@@ -44,6 +45,7 @@ class AIProcessor:
         Returns:
             str: Final aggregated result
         """
+        print(f"Aggregating {len(results)} results")
         # If results fit in context, aggregate directly
         combined_results = "\n\n".join(results)
         if self.tokenizer.count_tokens(combined_results) <= Config.MAX_OUTPUT_TOKENS:
@@ -86,6 +88,6 @@ class AIProcessor:
         chunk_results = await gather_with_concurrency(max_concurrency, *chunk_tasks)
         
         # Aggregate results
-        final_result = await self.aggregate_results(chunk_results, "Aggregate these results coherently.")
+        final_result = await self.aggregate_results(chunk_results, "Aggregate these results coherently. If there is nothing to aggregate, return the original data without saying anything extra. Don't say 'Here is the aggregated result:' or anything like that.")
         
         return final_result
