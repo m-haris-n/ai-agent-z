@@ -1,5 +1,6 @@
 import asyncio
 import tiktoken
+import re
 
 class Tokenizer:
     """Utility class for token-related operations."""
@@ -25,7 +26,7 @@ class Tokenizer:
 
 def chunk_text(text: str, max_tokens: int, tokenizer=None) -> list:
     """
-    Divide text into chunks respecting token limits.
+    Divide text into chunks respecting token limits and ensuring sentences are not cut off.
     
     Args:
         text (str): Input text to chunk
@@ -42,20 +43,21 @@ def chunk_text(text: str, max_tokens: int, tokenizer=None) -> list:
     current_chunk = []
     current_token_count = 0
     
-    # Split text into words or logical segments
-    segments = text.split()
+    # Split text into sentences using regex (handles sentence-ending punctuation)
+    sentences = re.split(r'(?<=\.)\s+', text)
     
-    for segment in segments:
-        segment_tokens = tokenizer.count_tokens(segment)
+    for sentence in sentences:
+        sentence_tokens = tokenizer.count_tokens(sentence)
         
-        # If adding this segment would exceed max tokens, start a new chunk
-        if current_token_count + segment_tokens > max_tokens:
-            chunks.append(' '.join(current_chunk))
-            current_chunk = []
-            current_token_count = 0
-        
-        current_chunk.append(segment)
-        current_token_count += segment_tokens
+        # If adding this sentence would exceed max tokens, start a new chunk
+        if current_token_count + sentence_tokens > max_tokens:
+            if current_chunk:  # Only add if there's something to add
+                chunks.append(' '.join(current_chunk))
+            current_chunk = [sentence]
+            current_token_count = sentence_tokens
+        else:
+            current_chunk.append(sentence)
+            current_token_count += sentence_tokens
     
     # Add the last chunk if not empty
     if current_chunk:
@@ -81,3 +83,20 @@ async def gather_with_concurrency(n: int, *tasks):
             return await task
     
     return await asyncio.gather(*(sem_task(task) for task in tasks))
+
+def process_json(data: list) -> str:
+    """
+    Process a list of tickets and extract their descriptions.
+    
+    Args:
+        data (list): A list of tickets, where each ticket is a dictionary.
+    
+    Returns:
+        str: A concatenated string of all ticket descriptions.
+    """
+    tickets = []
+    
+    for ticket in data:
+        tickets.append(ticket['description'] if 'description' in ticket else '')
+    
+    return ''.join(tickets)

@@ -3,7 +3,7 @@ import anthropic
 from anthropic import AsyncAnthropic
 from typing import Dict, Any, List
 from .config import Config
-from .utils import Tokenizer, chunk_text, gather_with_concurrency
+from .utils import Tokenizer, chunk_text, gather_with_concurrency, process_json
 
 class AIProcessor:
     def __init__(self):
@@ -78,11 +78,11 @@ class AIProcessor:
             str: Final processed result
         """
         # Convert data to processable string (customize as needed)
-        data_str = str(data)
-        
+        data_str = process_json(data['tickets']) if data and 'tickets' in data else ''
+
         # Chunk the data
         chunks = chunk_text(data_str, Config.MAX_CONTEXT_TOKENS - self.tokenizer.count_tokens(user_prefix))
-        
+
         # Process chunks in parallel
         chunk_tasks = [self.process_chunk(chunk, user_prefix) for chunk in chunks]
         chunk_results = await gather_with_concurrency(max_concurrency, *chunk_tasks)
