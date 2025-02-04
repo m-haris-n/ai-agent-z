@@ -1,15 +1,18 @@
 import asyncio
 import anthropic
 from anthropic import AsyncAnthropic
+from aiolimiter import AsyncLimiter
 from typing import Dict, Any, List
 from .config import Config
-from .utils import Tokenizer, chunk_text, gather_with_concurrency
+from .utils import Tokenizer, chunk_text, gather_with_concurrency, process_json
+from .decorators import retry, LlmCallError
 
 class AIProcessor:
     def __init__(self):
         self.client = AsyncAnthropic(api_key=Config.ANTHROPIC_API_KEY)
         self.tokenizer = Tokenizer()
     
+    @retry(times=3, exceptions=(LlmCallError))
     async def process_chunk(self, chunk: str, user_prefix: str) -> str:
         """
         Process a single chunk of data using Claude.
@@ -31,8 +34,7 @@ class AIProcessor:
             )
             return response.content[0].text
         except Exception as e:
-            print(f"Error processing chunk: {e}")
-            return f"Error: {str(e)}"
+            raise LlmCallError("LLm Call Failed: ", 503)
     
     async def aggregate_results(self, results: List[str], user_prefix: str) -> str:
         """
@@ -78,16 +80,29 @@ class AIProcessor:
             str: Final processed result
         """
         # Convert data to processable string (customize as needed)
-        data_str = str(data)
-        
+        data_str = process_json(data['tickets']) if data and 'tickets' in data else ''
+
         # Chunk the data
         chunks = chunk_text(data_str, Config.MAX_CONTEXT_TOKENS - self.tokenizer.count_tokens(user_prefix))
+
+        # Process chunks in batches of max_concurrency
+        results = []
+        for i in range(0, len(chunks), max_concurrency):
+            # Get the current batch of chunks
+            current_batch = chunks[i:i + max_concurrency]   
+
+            # Create tasks for the current batch
+            chunk_tasks = [self.process_chunk(chunk, user_prefix) for chunk in current_batch]
+            
+            # Wait for all tasks in the batch to complete
+            batch_results = await gather_with_concurrency(max_concurrency, *chunk_tasks)
+            results.extend(batch_results)
         
-        # Process chunks in parallel
-        chunk_tasks = [self.process_chunk(chunk, user_prefix) for chunk in chunks]
-        chunk_results = await gather_with_concurrency(max_concurrency, *chunk_tasks)
-        
+
         # Aggregate results
-        final_result = await self.aggregate_results(chunk_results, "Aggregate these results coherently. If there is nothing to aggregate, return the original data without saying anything extra. Don't say 'Here is the aggregated result:' or anything like that.")
+        final_result = await self.aggregate_results(
+            results,
+            "Aggregate these results coherently. If there is nothing to aggregate, return the original data without saying anything extra. Don't say 'Here is the aggregated result:' or anything like that."
+        )
         
         return final_result
